@@ -1,6 +1,7 @@
 package rz
 
 import (
+	"fmt"
 	"io"
 
 	"github.com/gookit/color"
@@ -31,4 +32,17 @@ func needsQuote(s string) bool {
 		}
 	}
 	return false
+}
+
+func colorize(c color.Color, str string) string {
+	code := c.String()
+	if len(code) == 0 || str == "" {
+		return str
+	}
+
+	if !color.Enable || !color.SupportColor() {
+		return str
+	}
+
+	return fmt.Sprintf(color.FullColorTpl, code, str)
 }

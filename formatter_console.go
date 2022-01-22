@@ -11,15 +11,6 @@ import (
 	"github.com/gookit/color"
 )
 
-func colorize(c color.Color, str string) string {
-	code := c.String()
-	if len(code) == 0 || str == "" {
-		return str
-	}
-
-	return fmt.Sprintf(color.FullColorTpl, code, str)
-}
-
 // FormatterConsole prettify output for human cosumption
 func FormatterConsole() LogFormatter {
 	return func(writer io.Writer, ev *Event) error {

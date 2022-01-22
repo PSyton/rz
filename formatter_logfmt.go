@@ -1,9 +1,9 @@
 package rz
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"time"
@@ -11,15 +11,10 @@ import (
 
 // FormatterLogfmt prettify output for human consumption, using the logfmt format.
 func FormatterLogfmt() LogFormatter {
-	return func(ev *Event) ([]byte, error) {
-		var event map[string]interface{}
-		var ret = new(bytes.Buffer)
-
-		d := json.NewDecoder(bytes.NewReader(ev.buf))
-		d.UseNumber()
-		err := d.Decode(&event)
+	return func(writer io.Writer, ev *Event) error {
+		event, err := ev.Decode()
 		if err != nil {
-			return ret.Bytes(), err
+			return err
 		}
 
 		fields := make([]string, 0, len(event))
@@ -32,32 +27,39 @@ func FormatterLogfmt() LogFormatter {
 			if needsQuote(field) {
 				field = strconv.Quote(field)
 			}
-			fmt.Fprintf(ret, " %s=", field)
+
+			if _, err = fmt.Fprintf(writer, " %s=", field); err != nil {
+				return err
+			}
 
 			switch value := event[field].(type) {
 			case string:
 				if len(value) == 0 {
-					ret.WriteString("\"\"")
+					_, err = fmt.Fprint(writer, "\"\"")
 				} else if needsQuote(value) {
-					ret.WriteString(strconv.Quote(value))
+					_, err = fmt.Fprint(writer, strconv.Quote(value))
 				} else {
-					ret.WriteString(value)
+					_, err = fmt.Fprint(writer, value)
 				}
 			case time.Time:
-				ret.WriteString(value.Format(time.RFC3339))
+				_, err = fmt.Fprint(writer, value.Format(time.RFC3339))
 			default:
 				b, err := json.Marshal(value)
 				if err != nil {
-					fmt.Fprintf(ret, "[error: %v]", err)
-				} else {
-					fmt.Fprint(ret, strconv.Quote(string(b)))
+					return err
 				}
+				_, err = fmt.Fprint(writer, strconv.Quote(string(b)))
 			}
-
+			if err != nil {
+				return err
+			}
 		}
 
-		ret.WriteByte('\n')
+		_, err = fmt.Fprintln(writer)
+		if err != nil {
+			return err
+		}
 
-		return ret.Bytes(), nil
+		return nil
 	}
 }

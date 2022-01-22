@@ -9,15 +9,23 @@ import (
 // to receive level information with payload.
 type LevelWriter interface {
 	io.Writer
-	WriteLevel(level LogLevel, p []byte) (n int, err error)
+	WriteEvent(e *Event) (err error)
 }
 
 type levelWriterAdapter struct {
 	io.Writer
 }
 
-func (lw levelWriterAdapter) WriteLevel(l LogLevel, p []byte) (n int, err error) {
-	return lw.Write(p)
+func (lw levelWriterAdapter) WriteEvent(e *Event) (err error) {
+	if e.formatter != nil {
+		return e.formatter(lw, e)
+	}
+
+	n, err := lw.Write(e.buf)
+	if err == nil && n < len(e.buf) {
+		err = io.ErrShortWrite
+	}
+	return
 }
 
 type syncWriter struct {
@@ -46,10 +54,10 @@ func (s *syncWriter) Write(p []byte) (n int, err error) {
 }
 
 // WriteLevel implements the LevelWriter interface.
-func (s *syncWriter) WriteLevel(l LogLevel, p []byte) (n int, err error) {
+func (s *syncWriter) WriteEvent(e *Event) (err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.lw.WriteLevel(l, p)
+	return s.lw.WriteEvent(e)
 }
 
 type multiLevelWriter struct {
@@ -70,18 +78,14 @@ func (t multiLevelWriter) Write(p []byte) (n int, err error) {
 	return len(p), nil
 }
 
-func (t multiLevelWriter) WriteLevel(l LogLevel, p []byte) (n int, err error) {
+func (t multiLevelWriter) WriteEvent(e *Event) (err error) {
 	for _, w := range t.writers {
-		n, err = w.WriteLevel(l, p)
+		err = w.WriteEvent(e)
 		if err != nil {
 			return
 		}
-		if n != len(p) {
-			err = io.ErrShortWrite
-			return
-		}
 	}
-	return len(p), nil
+	return nil
 }
 
 // MultiLevelWriter creates a writer that duplicates its writes to all the

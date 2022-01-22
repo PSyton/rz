@@ -218,11 +218,8 @@ func writeEvent(e *Event, msg string, done func(string)) {
 		// end json payload
 		e.buf = enc.AppendEndMarker(e.buf)
 		e.buf = enc.AppendLineBreak(e.buf)
-		if e.formatter != nil {
-			e.buf, err = e.formatter(e)
-		}
 		if e.w != nil {
-			_, err = e.w.WriteLevel(e.level, e.buf)
+			err = e.w.WriteEvent(e)
 		}
 
 		putEvent(e)

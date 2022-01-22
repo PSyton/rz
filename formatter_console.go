@@ -1,41 +1,34 @@
 package rz
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/gookit/color"
 )
 
-const (
-	cReset    = 0
-	cBold     = 1
-	cRed      = 31
-	cGreen    = 32
-	cYellow   = 33
-	cBlue     = 34
-	cMagenta  = 35
-	cCyan     = 36
-	cGray     = 37
-	cDarkGray = 90
-)
+func colorize(c color.Color, str string) string {
+	code := c.String()
+	if len(code) == 0 || str == "" {
+		return str
+	}
+
+	return fmt.Sprintf(color.FullColorTpl, code, str)
+}
 
 // FormatterConsole prettify output for human cosumption
 func FormatterConsole() LogFormatter {
-	return func(ev *Event) ([]byte, error) {
-		var event map[string]interface{}
-		var ret = new(bytes.Buffer)
-
-		d := json.NewDecoder(bytes.NewReader(ev.buf))
-		d.UseNumber()
-		err := d.Decode(&event)
+	return func(writer io.Writer, ev *Event) error {
+		event, err := ev.Decode()
 		if err != nil {
-			return ret.Bytes(), err
+			return err
 		}
 
-		lvlColor := cReset
+		lvlColor := color.FgDefault
 		level := "????"
 		if l, ok := event[DefaultLevelFieldName].(string); ok {
 			lvlColor = levelColor(l)
@@ -52,12 +45,19 @@ func FormatterConsole() LogFormatter {
 			timestamp = t
 		}
 
-		ret.WriteString(fmt.Sprintf("%-20s |%-4s|",
-			timestamp,
-			colorize(level, lvlColor),
-		))
+		if _, err = fmt.Fprintf(writer, "%-20s", timestamp); err != nil {
+			return err
+		}
+
+		if _, err = fmt.Fprintf(writer, " |%-4s|", colorize(lvlColor, level)); err != nil {
+			return err
+		}
+
 		if message != "" {
-			ret.WriteString(" " + message)
+			_, err = fmt.Fprint(writer, " "+message)
+		}
+		if err != nil {
+			return err
 		}
 
 		fields := make([]string, 0, len(event))
@@ -75,56 +75,33 @@ func FormatterConsole() LogFormatter {
 			if needsQuote(field) {
 				field = strconv.Quote(field)
 			}
-			fmt.Fprintf(ret, " %s=", colorize(field, lvlColor))
+
+			_, err = fmt.Fprintf(writer, " %s=", colorize(lvlColor, field))
 
 			switch value := event[field].(type) {
 			case string:
 				if len(value) == 0 {
-					ret.WriteString("\"\"")
+					_, err = fmt.Fprint(writer, "\"\"")
 				} else if needsQuote(value) {
-					ret.WriteString(strconv.Quote(value))
+					_, err = fmt.Fprint(writer, strconv.Quote(value))
 				} else {
-					ret.WriteString(value)
+					_, err = fmt.Fprint(writer, value)
 				}
 			default:
-				b, err := json.Marshal(value)
-				if err != nil {
-					return ret.Bytes(), err
+				if b, e := json.Marshal(value); e == nil {
+					_, err = fmt.Fprint(writer, string(b))
 				}
-				fmt.Fprint(ret, string(b))
+			}
+			if err != nil {
+				return err
 			}
 		}
 
-		ret.WriteByte('\n')
-
-		return ret.Bytes(), nil
-	}
-}
-
-func colorize(s interface{}, color int) string {
-	return fmt.Sprintf("\x1b[%dm%v\x1b[0m", color, s)
-}
-
-func levelColor(level string) int {
-	switch level {
-	case "debug":
-		return cMagenta
-	case "info":
-		return cCyan
-	case "warning":
-		return cYellow
-	case "error", "fatal", "panic":
-		return cRed
-	default:
-		return cReset
-	}
-}
-
-func needsQuote(s string) bool {
-	for i := range s {
-		if s[i] < 0x20 || s[i] > 0x7e || s[i] == ' ' || s[i] == '\\' || s[i] == '"' {
-			return true
+		_, err = fmt.Fprintln(writer)
+		if err != nil {
+			return err
 		}
+
+		return nil
 	}
-	return false
 }

@@ -89,6 +89,22 @@ func (e *Event) Append(fields ...Field) {
 	}
 }
 
+// Decode returns the fields from the event
+// Unmarshal a number into an interface{} as a Number instead of as a float64.
+// Note that this call is very expensive and should be used sparingly.
+func (e *Event) Decode() (map[string]interface{}, error) {
+	var event map[string]interface{}
+
+	d := json.NewDecoder(bytes.NewReader(e.buf))
+	d.UseNumber()
+	err := d.Decode(&event)
+	if err != nil {
+		return nil, err
+	}
+
+	return event, nil
+}
+
 // Fields returns the fields from the event.
 // Note that this call is very expensive and should be used sparingly.
 func (e *Event) Fields() (map[string]interface{}, error) {
